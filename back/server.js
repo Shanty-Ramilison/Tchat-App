@@ -15,17 +15,31 @@ app.get('/', (req,res)=>{
     res.send('Serveur en marche !')
 })
 
-io.on('connection', (socket) =>{
-    console.log('Un utilisateur connectee :', socket.id)
+let connectes=0
+io.on('connection', (socket)=>{
+    connectes++
+    console.log("Un utilisateur connectee :", socket.id)
+    io.emit("connectes", connectes)
 
-    socket.on('message', (data)=>{
-        console.log('Message recu :', data)
+    socket.on('message', data =>{
+        console.log('Message recu : ', data)
         io.emit('message', data)
-})
-    socket.on('disconnect', ()=> {
-        console.log('Utilisateur deconnectee :', socket.id)
+    })
+    socket.on('typing', (pseudo)=>{
+        socket.broadcast.emit('typing', pseudo)
+    })
+    socket.on('stopTyping', (pseudo)=>{
+        socket.broadcast.emit('stopTyping')
+    })
+    
+    socket.on('disconnect', ()=>{
+        connectes--
+        console.log('Utilisateur deconnectee:', socket.id)
+        io.emit('connectes', connectes)
     })
 })
+
 server.listen(3000, ()=> {
     console.log('Serveur demarre sur http://localhost:3000')
 })
+

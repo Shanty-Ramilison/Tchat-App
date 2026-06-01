@@ -2,22 +2,37 @@ import { useState, useEffect, useRef } from "react"
 //recharge la page quand elle change, du code qui tourne automatiquement, pointer vers un element html
 import {io} from 'socket.io-client'
 
-const socket= io('http://localhost:3000')
-
 function Chat(){
     const [messages, setMessages]=useState([]);
     const [input, setInput]=useState('');
     const [pseudo, setPseudo]=useState('');
     const [pseudoConfirmed, setPseudoConfirmed]= useState(false);
-    const bottomRef=useRef(null) //pour scroller automatiquement 
+    const bottomRef=useRef(null); //pour scroller automatiquement 
+    const [connectes, setConnectes]=useState(0);
+    const [typing, setTyping]=useState('');
+    const typingTimeoutRef=useRef(null);
+    const socketRef= useRef(null)
 
-//ecoute les messages venant du serveur
 useEffect(()=>{
-    socket.on('message', (data)=>{
+    socketRef.current= io('http://localhost:3000')
+
+    socketRef.current.on('message', (data)=>{
         setMessages((prev)=>[...prev, data])
     })
-    return ()=> socket.off('message')
-}, [])
+    socketRef.current.on('connectes', (nombre)=>{
+        setConnectes(nombre)
+    })
+    //ecoute qui est en train de taper
+    socketRef.current.on('typing', (pseudo)=>{
+        setTyping(pseudo)
+    })
+    socketRef.current.on('stopTyping', ()=>{
+        setTyping('')
+    })
+    return ()=>{
+        socketRef.current.disconnect()
+    }
+},[])
 
 //scroll automatique avec arriver d'un nouveau message
 useEffect(()=>{
@@ -27,7 +42,7 @@ useEffect(()=>{
 //Envoyer un message
 const sendMessage=()=>{
     if (input.trim()==='') return
-    socket.emit('message', {pseudo, text:input})
+    socketRef.current.emit('message', {pseudo, text:input})
     setInput('')
 }
 
@@ -35,6 +50,7 @@ const sendMessage=()=>{
 const handleKey=(e)=>{
     if (e.key==='Enter') sendMessage()
 }
+
 
 //Page 1
 if(!pseudoConfirmed){
@@ -65,8 +81,8 @@ return(
         <div className="bg-gray-800 px-6 py-4 flex justify-between items-center border-b border-gray-700">
             <span className="text-white font-bold text-lg ">💬 Tchat </span>
             <span className="text-gray-400 text-sm">Connectee en tant que <b className="text-white">{pseudo}</b></span>
-        </div>
-        
+            <span className="text-green-400 text-sm">🟢 {connectes} en ligne</span>
+        </div>       
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-3">
             {messages.map((msg, i)=>{
                 const isMe=msg.pseudo ===pseudo
@@ -85,17 +101,30 @@ return(
                         </div>
                     </div>
                 )
-
             })}
             <div ref={bottomRef}/>
+             {typing && (
+                <p className="text-gray-400 text-xs px-6 pb-1 italic animate-pulse">
+                    ✍️ {typing} est en train d'ecrire...
+                </p>
+            )}
         </div>
         {/*input*/}
         <div className="bg-gray-800 px-6 py-4 flex gap-3 border-t border-gray-700">
             <input 
             className="flex-1 bg-gray-900 text-white p-3 rounded-lg outline-none border border-gray-700"
-            placeholder="Tape un message..."
+            placeholder="Envoyer un message..."
             value={input}
-            onChange={(e)=>setInput(e.target.value)}
+            onChange={(e)=>{
+                setInput(e.target.value)
+
+                socketRef.current.emit('typing', pseudo)
+
+                clearTimeout(typingTimeoutRef.current)
+                typingTimeoutRef.current=setTimeout(() => {
+                    socketRef.current.emit('stopTyping')
+                },1500)
+            }}
             onKeyDown={handleKey}
             />
             <button className="bg-violet-600 text-white px-6 rounded-lg font-bold hover:bg-violet-700"
