@@ -19,6 +19,7 @@ app.get('/', (req, res)=>{
 
 const pool=mysql.createPool({
     host : process.env.DB_HOST,
+    port : process.env.DB_PORT || 3306,
     user : process.env.DB_USER,
     password: process.env.DB_PASS,
     database: process.env.DB_NAME
@@ -35,6 +36,7 @@ const io=new Server(server, {
 app.post('/api/auth/register', async (req , res)=>{
     try{
         const{username, password}=req.body
+        console.log('Register tenté:', username) // ← ICI
         if(!username || !password)
             return res.status(400).json({message: 'Champs obligatoirea.'})
 
@@ -53,9 +55,11 @@ app.post('/api/auth/register', async (req , res)=>{
 
         res.status(201).json({message: 'Compte cree !'})
     } catch(err){
+        console.log('Register tenté:', err.message)
         res.status(500).json({message: 'Erreur serveur.', error: err.message})
     }
 })
+
 
 app.post('/api/auth/login', async (req,res)=>{
     try{
@@ -93,27 +97,38 @@ app.post('/api/auth/login', async (req,res)=>{
     }
 })
 
-let connectes=0
-io.on('connection', (socket)=>{
-    connectes++
-    console.log("Un utilisateur connectee :", socket.id)
-    io.emit("connectes", connectes)
+const usersConnectes={}
 
-    socket.on('message', data =>{
-        console.log('Message recu : ', data)
-        io.emit('message', data)
+io.on('connection', (socket)=>{
+    console.log('Un utilisateur connectee :', socket.id)
+
+    socket.on('rejoindre', (username)=>{
+        usersConnectes[socket.id]=username
+
+        io.emit('usersConnectes', Object.values(usersConnectes))
+        io.emit('connectes', Object.keys(usersConnectes).length)
+
+        console.log(`${username} a rejoint le tchat`)
+
+        socket.on('message', (data)=>{
+            console.log('Message recu :', data)
+            io.emit('message', data)
+        })
     })
     socket.on('typing', (pseudo)=>{
         socket.broadcast.emit('typing', pseudo)
     })
-    socket.on('stopTyping', (pseudo)=>{
+    socket.on('stopTyping', ()=>{
         socket.broadcast.emit('stopTyping')
     })
-    
     socket.on('disconnect', ()=>{
-        connectes--
-        console.log('Utilisateur deconnectee:', socket.id)
-        io.emit('connectes', connectes)
+        const username=usersConnectes[socket.id]
+        delete usersConnectes[socket.id]
+
+        io.emit('usersConnectes', Object.values(usersConnectes))
+        io.emit('connectes', Object.keys(usersConnectes).length)
+
+        console.log(`${username} a quittee le tchat`)
     })
 })
 
